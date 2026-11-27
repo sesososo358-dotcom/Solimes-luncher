@@ -41,35 +41,4 @@ class MainActivity : Activity() {
     private lateinit var accounts: AccountManager
     private lateinit var skins: SkinManager
     private lateinit var content: FrameLayout
-    private val io: ExecutorService = Executors.newSingleThreadExecutor()
-    private var statusView: TextView? = null
-    private var pendingStatus: String = "Ready."
-    @Volatile private var busy = false
-
-    private val green = Color.parseColor("#9BFF7A")
-    private val bg = Color.parseColor("#0F1A10")
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        NativeBridge.ensureLoaded()
-        paths = GamePaths(this)
-        prefs = getSharedPreferences("solimes", MODE_PRIVATE)
-        accounts = AccountManager(paths)
-        skins = SkinManager(this, paths)
-
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(bg)
-            setPadding(dp(12), dp(12), dp(12), dp(12))
-        }
-        val nav = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        listOf("Play", "Accounts", "Performance", "Logs").forEachIndexed { i, title ->
-            nav.addView(
-                Button(this).apply { text = title; textSize = 12f; setOnClickListener { show(i) } },
-                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            )
-        }
-        content = FrameLayout(this)
-        root.addView(nav)
-        root.addView(content, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
-        set
+    private val io: ExecutorService =
