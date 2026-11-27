@@ -12,7 +12,6 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import com.solimes.launcher.nativebridge.NativeBridge
-import java.io.File
 
 /**
  * The piece that actually starts the JVM on Android.
@@ -79,15 +78,26 @@ class GameWindowActivity : Activity() {
             setTextColor(Color.LTGRAY)
         }
 
-        fun refreshUi() {
-            statusView.text = "Status: ${ActiveGameSession.lastAction} | WorkDir: $workDir"
-            val logs = try {
-                NativeBridge.drainLogs()
+        fun formatDrainedLogs(): String {
+            return try {
+                val raw: Any? = NativeBridge.drainLogs()
+                when (raw) {
+                    null -> ""
+                    is String -> raw.trim()
+                    is List<*> -> raw.mapNotNull { it?.toString() }.joinToString("\n").trim()
+                    is Array<*> -> raw.mapNotNull { it?.toString() }.joinToString("\n").trim()
+                    else -> raw.toString().trim()
+                }
             } catch (_: Throwable) {
                 ""
             }
+        }
+
+        fun refreshUi() {
+            statusView.text = "Status: ${ActiveGameSession.lastAction} | WorkDir: $workDir"
+            val logs = formatDrainedLogs()
             infoView.text = buildString {
-                if (logs.isNotBlank()) {
+                if (logs.isNotEmpty()) {
                     appendLine("--- Native Logs ---")
                     appendLine(logs)
                 }
