@@ -39,4 +39,28 @@ class GameRuntime(private val context: Context) {
         val binJava = File(binDir, "java")
         if (binJava.exists()) {
             binJava.setReadable(true, false)
-            binJava.
+            binJava.setExecutable(true, false)
+            return binJava
+        }
+
+        val prepared = prepareJava8()
+        File(prepared, "bin").listFiles()?.forEach { file ->
+            if (file.isFile) {
+                file.setReadable(true, false)
+                file.setExecutable(true, false)
+            }
+        }
+        val javaAfterExtract = File(prepared, "bin/java")
+        javaAfterExtract.setReadable(true, false)
+        javaAfterExtract.setExecutable(true, false)
+        return javaAfterExtract
+    }
+}
+
+object ActiveGameSession {
+    @Volatile var process: Process? = null
+    @Volatile var lastAction: String = "Idle"
+
+    fun sendKey(label: String, payload: String) {
+        lastAction = "Pressed: $label"
+        AppLog.add(0, "[INPUT] $label
