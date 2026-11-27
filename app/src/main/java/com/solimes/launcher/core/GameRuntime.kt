@@ -63,4 +63,67 @@ object ActiveGameSession {
 
     fun sendKey(label: String, payload: String) {
         lastAction = "Pressed: $label"
-        AppLog.add(0, "[INPUT] $label
+        AppLog.add(0, "[INPUT] $label")
+        NativeBridge.log(0, "Input pressed: $label")
+        val out: OutputStream? = process?.outputStream
+        if (out != null) {
+            try {
+                out.write(payload.toByteArray())
+                out.flush()
+            } catch (t: Throwable) {
+                lastAction = "Input error: ${t.message}"
+                AppLog.add(2, "[INPUT ERR] ${t.message}")
+            }
+        } else {
+            lastAction = "No running Java process (UI test mode: $label)"
+        }
+    }
+}
+
+class GameWindowActivity : Activity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        NativeBridge.ensureLoaded()
+        val cmd = intent.getStringArrayListExtra("mc_command") ?: arrayListOf()
+        val workDir = intent.getStringExtra("mc_work_dir") ?: filesDir.absolutePath
+
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.parseColor("#0F1A10"))
+            setPadding(24, 24, 24, 24)
+        }
+
+        val title = TextView(this).apply {
+            text = "Minecraft Interactive Window"
+            textSize = 19f
+            setTextColor(Color.parseColor("#9BFF7A"))
+        }
+
+        val actionStatus = TextView(this).apply {
+            text = "Status: ${ActiveGameSession.lastAction} \vert{} WorkDir:$workDir"
+            textSize = 12f
+            setTextColor(Color.WHITE)
+        }
+
+        val logView = TextView(this).apply {
+            text = (AppLog.snapshot().reversed() + listOf("--- Command ---") + cmd).joinToString("\n")
+            textSize = 11f
+            setTextColor(Color.LTGRAY)
+        }
+
+        fun refreshView() {
+            actionStatus.text = "Status: ${ActiveGameSession.lastAction} \vert{} WorkDir:$workDir"
+            logView.text = (AppLog.snapshot().reversed() + listOf("--- Command ---") + cmd).joinToString("\n")
+        }
+
+        fun makeCtrlButton(label: String, keyPayload: String): Button = Button(this).apply {
+            text = label
+            textSize = 12f
+            setOnClickListener {
+                ActiveGameSession.sendKey(label, keyPayload)
+                refreshView()
+            }
+        }
+
+        val row1 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        row1.addView(makeCtrlButton("W", "w\n"), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1
