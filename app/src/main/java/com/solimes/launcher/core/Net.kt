@@ -10,7 +10,12 @@ import java.util.concurrent.Callable
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 
-data class DlTask(val url: String, val dest: File, val sha1: String? = null)
+data class DlTask(
+    val url: String,
+    val dest: File,
+    val sha1: String? = null,
+    val skipOn404: Boolean = false
+)
 
 object Net {
     private const val UA = "SolimesLauncher/1.0 (Android)"
@@ -19,7 +24,7 @@ object Net {
         var current = url
         repeat(6) {
             val c = URL(current).openConnection() as HttpURLConnection
-            c.connectTimeout = 15000
+            c.connectTimeout = 20000
             c.readTimeout = 30000
             c.instanceFollowRedirects = false
             c.setRequestProperty("User-Agent", UA)
@@ -40,12 +45,23 @@ object Net {
     }
 
     fun getText(url: String): String {
-        val c = open(url)
-        try {
-            return c.inputStream.bufferedReader().use { it.readText() }
-        } finally {
-            c.disconnect()
+        var last: Exception? = null
+        for (attempt in 0..3) {
+            try {
+                val c = open(url)
+                try {
+                    return c.inputStream.bufferedReader().use { it.readText() }
+                } finally {
+                    c.disconnect()
+                }
+            } catch (e: Exception) {
+                last = e
+                if (attempt < 3) {
+                    try { Thread.sleep(600L * (attempt + 1)) } catch (_: InterruptedException) {}
+                }
+            }
         }
+        throw last ?: IOException("Failed to fetch text from $url")
     }
 
     fun sha1Of(file: File): String {
@@ -66,45 +82,59 @@ object Net {
         if (dest.isFile && dest.length() > 0 && (task.sha1 == null || sha1Of(dest).equals(task.sha1, true))) return
         dest.parentFile?.mkdirs()
         val part = File(dest.path + ".part")
-        val c = open(task.url)
+        if (part.exists()) part.delete()
+
         try {
-            c.inputStream.use { input ->
-                FileOutputStream(part).use { out ->
-                    val buf = ByteArray(64 * 1024)
-                    while (true) {
-                        val n = input.read(buf)
-                        if (n < 0) break
-                        out.write(buf, 0, n)
+            val c = open(task.url)
+            try {
+                c.inputStream.use { input ->
+                    FileOutputStream(part).use { out ->
+                        val buf = ByteArray(64 * 1024)
+                        while (true) {
+                            val n = input.read(buf)
+                            if (n < 0) break
+                            out.write(buf, 0, n)
+                        }
                     }
                 }
+            } finally {
+                c.disconnect()
             }
-        } finally {
-            c.disconnect()
+            if (task.sha1 != null && !sha1Of(part).equals(task.sha1, true)) {
+                part.delete()
+                throw IOException("SHA-1 mismatch for ${task.url}")
+            }
+            if (dest.exists()) dest.delete()
+            if (!part.renameTo(dest)) throw IOException("Cannot write ${dest.path}")
+        } catch (e: Exception) {
+            if (part.exists()) part.delete()
+            val msg = e.message.orEmpty()
+            if (task.skipOn404 && (msg.contains("HTTP 404") || e.cause?.message?.contains("HTTP 404") == true)) {
+                return
+            }
+            throw e
         }
-        if (task.sha1 != null && !sha1Of(part).equals(task.sha1, true)) {
-            part.delete()
-            throw IOException("SHA-1 mismatch for ${task.url}")
-        }
-        if (dest.exists()) dest.delete()
-        if (!part.renameTo(dest)) throw IOException("Cannot write ${dest.path}")
     }
 
-    /** Downloads in parallel (retrying each file twice). Throws the first failure. */
-    fun downloadAll(tasks: List<DlTask>, threads: Int = 6, progress: (Int, Int) -> Unit) {
+    /** Downloads in parallel (retrying each file on failure). Throws the first failure. */
+    fun downloadAll(tasks: List<DlTask>, threads: Int = 4, progress: (Int, Int) -> Unit) {
         if (tasks.isEmpty()) return
-        val pool = Executors.newFixedThreadPool(threads)
+        val pool = Executors.newFixedThreadPool(threads.coerceAtLeast(1))
         val done = AtomicInteger(0)
         try {
             val futures = tasks.map { t ->
                 pool.submit(Callable {
                     var last: Exception? = null
-                    for (attempt in 0..2) {
+                    for (attempt in 0..4) {
                         try {
                             download(t)
                             last = null
                             break
                         } catch (e: Exception) {
                             last = e
+                            if (attempt < 4) {
+                                try { Thread.sleep(700L * (attempt + 1)) } catch (_: InterruptedException) {}
+                            }
                         }
                     }
                     if (last != null) throw last
