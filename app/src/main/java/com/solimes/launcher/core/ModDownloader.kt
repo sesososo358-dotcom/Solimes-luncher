@@ -12,16 +12,34 @@ object ModDownloader {
         val gv = URLEncoder.encode("[\"$mc\"]", "UTF-8")
         val ld = URLEncoder.encode("[\"fabric\"]", "UTF-8")
         say("Looking up $slug for $mc...")
-        val versions = JSONArray(Net.getText("https://api.modrinth.com/v2/project/$slug/version?game_versions=$gv&loaders=$ld"))
-        if (versions.length() == 0) throw IllegalStateException("$slug has no release for Minecraft $mc on Modrinth")
+
+        var versions = JSONArray(
+            Net.getText("https://api.modrinth.com/v2/project/$slug/version?game_versions=$gv&loaders=$ld")
+        )
+
+        if (versions.length() == 0 && Versions.isLegacy(mc)) {
+            versions = JSONArray(
+                Net.getText("https://api.modrinth.com/v2/project/$slug/version?game_versions=$gv")
+            )
+        }
+
+        if (versions.length() == 0) {
+            say("Warning: $slug has no release for Minecraft $mc on Modrinth; skipping.")
+            return
+        }
+
         val files = versions.getJSONObject(0).getJSONArray("files")
         var chosen = files.getJSONObject(0)
         for (i in 0 until files.length()) {
-            if (files.getJSONObject(i).optBoolean("primary")) { chosen = files.getJSONObject(i); break }
+            if (files.getJSONObject(i).optBoolean("primary")) {
+                chosen = files.getJSONObject(i)
+                break
+            }
         }
         val name = chosen.getString("filename")
         modsDir.mkdirs()
-        modsDir.listFiles { f -> f.name.startsWith(slug) && f.name.endsWith(".jar") && f.name != name }?.forEach { it.delete() }
+        modsDir.listFiles { f -> f.name.startsWith(slug) && f.name.endsWith(".jar") && f.name != name }
+            ?.forEach { it.delete() }
         val sha1 = chosen.optJSONObject("hashes")?.optString("sha1")?.ifEmpty { null }
         say("Downloading $name...")
         Net.download(DlTask(chosen.getString("url"), File(modsDir, name), sha1))
