@@ -1,26 +1,21 @@
-package com.solimes.launcher.runtime
+package com.solimes.launcher.core
 
 import android.content.Context
+import com.solimes.launcher.runtime.Java8Downloader
 import java.io.File
 
 class GameRuntime(private val context: Context) {
 
-    fun prepareJava8(onLog: (String) -> Unit = {}): File {
-        val runtimeBaseDir = File(context.getExternalFilesDir(null), "solimes/runtime")
-        if (!runtimeBaseDir.exists()) {
-            runtimeBaseDir.mkdirs()
+    fun prepareJava8(onProgress: (String) -> Unit = {}): File {
+        val downloader = Java8Downloader(context)
+        return downloader.ensureJava8 { status: String ->
+            onProgress(status)
         }
+    }
 
-        val java8Dir = Java8Downloader.ensureJava8Installed(runtimeBaseDir) { status ->
-            onLog(status)
-        }
-
-        val javaExecutable = File(java8Dir, "bin/java")
-        if (!javaExecutable.exists()) {
-            throw IllegalStateException("Java 8 executable not found at: ${javaExecutable.absolutePath}")
-        }
-
-        javaExecutable.setExecutable(true, false)
-        return javaExecutable
+    fun getJavaExecutable(): File {
+        val runtimeDir = File(context.filesDir, "runtimes/jre8-arm64")
+        val binJava = File(runtimeDir, "bin/java")
+        return if (binJava.exists()) binJava else prepareJava8()
     }
 }
