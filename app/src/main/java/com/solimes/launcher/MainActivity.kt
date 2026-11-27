@@ -24,7 +24,6 @@ import com.solimes.launcher.core.InstallRequest
 import com.solimes.launcher.core.InstanceInstaller
 import com.solimes.launcher.core.InstanceMeta
 import com.solimes.launcher.core.LaunchBuilder
-import com.solimes.launcher.core.RuntimeProvider
 import com.solimes.launcher.core.Versions
 import com.solimes.launcher.nativebridge.NativeBridge
 import com.solimes.launcher.performance.PerformancePresetManager
@@ -78,7 +77,6 @@ class MainActivity : Activity() {
         show(0)
     }
 
-    // ---------- helpers ----------
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
     private fun column() = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(8), 0, dp(24)) }
     private fun label(s: String, size: Float = 14f, color: Int = Color.WHITE) =
@@ -104,7 +102,6 @@ class MainActivity : Activity() {
         content.addView(ScrollView(this).apply { addView(page) })
     }
 
-    // ---------- Play ----------
     private fun playPage(): View {
         val col = column()
         col.addView(ImageView(this).apply { setImageResource(R.drawable.solimes_logo) },
@@ -184,9 +181,23 @@ class MainActivity : Activity() {
                 val meta = InstanceMeta.load(dir) ?: throw IllegalStateException("Not installed yet - press Download / Install first")
                 val account = accounts.selected() ?: throw IllegalStateException("Create a profile on the Accounts tab first")
                 val spec = LaunchBuilder.build(paths, meta, account, PerformancePresetManager.jvmArgs(mc))
-                File(dir, "launch-command.txt").writeText(spec.commandLine().joinToString(" \\\n  "))
-                RuntimeProvider.current?.launch(spec)?.getOrThrow()
-                say("Launched Minecraft $mc as ${account.name}")
+                val args = spec.commandLine().toMutableList()
+                if (args.isNotEmpty()) {
+                    args[0] = javaBin.absolutePath
+                }
+                File(dir, "launch-command.txt").writeText(args.joinToString(" \\\n  "))
+                val process = ProcessBuilder(args)
+                    .directory(dir)
+                    .redirectErrorStream(true)
+                    .start()
+                AppLog.add(0, "Started process with PID/stream for $mc")
+                process.inputStream.bufferedReader().useLines { lines ->
+                    lines.forEach { line ->
+                        AppLog.add(0, line)
+                    }
+                }
+                val code = process.waitFor()
+                say("Process exited ($code) for Minecraft $mc as ${account.name}")
             } catch (t: Throwable) {
                 AppLog.add(2, "Launch: ${t.message}")
                 say(t.message ?: "Launch failed")
@@ -196,7 +207,6 @@ class MainActivity : Activity() {
         }
     }
 
-    // ---------- Accounts & skins ----------
     private fun selectedSkin(): File? =
         prefs.getString("skin", null)?.let { File(paths.skins, it) }?.takeIf { it.isFile }
 
@@ -279,7 +289,6 @@ class MainActivity : Activity() {
         }
     }
 
-    // ---------- Performance ----------
     private fun performancePage(): View {
         val col = column()
         col.addView(label("Performance (Max FPS)", 20f, green))
@@ -298,7 +307,6 @@ class MainActivity : Activity() {
         return col
     }
 
-    // ---------- Logs ----------
     private fun logsPage(): View {
         val col = column()
         col.addView(label("Logs", 20f, green))
