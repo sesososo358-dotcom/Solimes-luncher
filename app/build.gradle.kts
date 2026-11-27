@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "com.solimes.launcher" // <-- عدّل هذا إذا كان مختلفاً في مشروعك
-    compileSdk = 35 // <-- عدّل هذا إذا كان مختلفاً في مشروعك
+    namespace = "com.solimes.launcher"
+    compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.solimes.launcher" // <-- عدّل هذا إذا كان مختلفاً في مشروعك
+        applicationId = "com.solimes.launcher"
         minSdk = 24
         targetSdk = 35
         versionCode = 1
@@ -39,8 +39,6 @@ dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("com.google.android.material:material:1.12.0")
-
-    // مكتبات تحميل وفك ضغط ملف Java 8 بصيغة tar.xz
     implementation("org.apache.commons:commons-compress:1.26.1")
     implementation("org.tukaani:xz:1.9")
 }
