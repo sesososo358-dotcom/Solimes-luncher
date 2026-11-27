@@ -24,11 +24,11 @@ import com.solimes.launcher.core.InstallRequest
 import com.solimes.launcher.core.InstanceInstaller
 import com.solimes.launcher.core.InstanceMeta
 import com.solimes.launcher.core.LaunchBuilder
-import com.solimes.launcher.core.LocalJavaRuntime
 import com.solimes.launcher.core.RuntimeProvider
 import com.solimes.launcher.core.Versions
 import com.solimes.launcher.nativebridge.NativeBridge
 import com.solimes.launcher.performance.PerformancePresetManager
+import com.solimes.launcher.runtime.GameRuntime
 import com.solimes.launcher.skins.SkinManager
 import java.io.File
 import java.util.concurrent.ExecutorService
@@ -40,6 +40,7 @@ class MainActivity : Activity() {
     private lateinit var prefs: SharedPreferences
     private lateinit var accounts: AccountManager
     private lateinit var skins: SkinManager
+    private lateinit var gameRuntime: GameRuntime
     private lateinit var content: FrameLayout
     private val io: ExecutorService = Executors.newSingleThreadExecutor()
     private var statusView: TextView? = null
@@ -53,7 +54,7 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         NativeBridge.ensureLoaded()
         paths = GamePaths(this)
-        RuntimeProvider.current = LocalJavaRuntime(paths) { msg -> say(msg) }
+        gameRuntime = GameRuntime(this)
         prefs = getSharedPreferences("solimes", MODE_PRIVATE)
         accounts = AccountManager(paths)
         skins = SkinManager(this, paths)
@@ -177,12 +178,14 @@ class MainActivity : Activity() {
         val client = prefs.getBoolean("client", true)
         io.execute {
             try {
+                val javaBin = gameRuntime.prepareJava8 { msg -> say(msg) }
+                say("Using Java 8: ${javaBin.absolutePath}")
                 val dir = paths.instanceDir(mc, client)
                 val meta = InstanceMeta.load(dir) ?: throw IllegalStateException("Not installed yet - press Download / Install first")
                 val account = accounts.selected() ?: throw IllegalStateException("Create a profile on the Accounts tab first")
                 val spec = LaunchBuilder.build(paths, meta, account, PerformancePresetManager.jvmArgs(mc))
                 File(dir, "launch-command.txt").writeText(spec.commandLine().joinToString(" \\\n  "))
-                RuntimeProvider.current.launch(spec).getOrThrow()
+                RuntimeProvider.current?.launch(spec)?.getOrThrow()
                 say("Launched Minecraft $mc as ${account.name}")
             } catch (t: Throwable) {
                 AppLog.add(2, "Launch: ${t.message}")
