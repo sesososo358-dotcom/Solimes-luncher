@@ -183,5 +183,131 @@ class MainActivity : Activity() {
                 File(dir, "launch-command.txt").writeText(spec.commandLine().joinToString(" \\\n  "))
                 RuntimeProvider.current = UiTestRuntime(this)
                 RuntimeProvider.current.launch(spec).getOrThrow()
-                say("Launched Minecraft $mc as${account.name}")
-            
+                say("Launched Minecraft $mc as ${account.name}")
+            } catch (t: Throwable) {
+                AppLog.add(2, "Launch: ${t.message}")
+                say(t.message ?: "Launch failed")
+            } finally {
+                busy = false
+            }
+        }
+    }
+
+    // ---------- Accounts & skins ----------
+    private fun selectedSkin(): File? =
+        prefs.getString("skin", null)?.let { File(paths.skins, it) }?.takeIf { it.isFile }
+
+    private fun accountsPage(): View {
+        val col = column()
+        col.addView(label("Profiles", 20f, green))
+        col.addView(label("Offline profiles work in singleplayer, LAN and offline-mode servers. Servers that verify accounts need a real Microsoft account (not implemented in this build).", 12f, Color.LTGRAY))
+        val name = field("Player name (3-16: letters, digits, _)", "")
+        col.addView(name)
+        val msg = label("", 12f, green)
+        col.addView(button("Create offline profile") {
+            try {
+                val p = accounts.createOffline(name.text.toString().trim())
+                msg.text = "Created ${p.name}"
+                show(1)
+            } catch (e: IllegalArgumentException) {
+                msg.text = e.message
+            }
+        })
+        col.addView(msg)
+
+        val selected = accounts.selected()
+        val group = RadioGroup(this)
+        accounts.list().forEach { p ->
+            group.addView(RadioButton(this).apply {
+                text = "${p.name}  [${p.type}]"
+                setTextColor(Color.WHITE)
+                id = View.generateViewId()
+                isChecked = p.uuid == selected?.uuid
+                setOnClickListener { accounts.select(p.uuid) }
+            })
+        }
+        col.addView(group)
+        selected?.let { s -> col.addView(button("Delete selected profile") { accounts.remove(s.uuid); show(1) }) }
+
+        col.addView(label("Skins", 20f, green))
+        col.addView(button("Import skin (PNG 64x64)") {
+            startActivityForResult(
+                Intent(Intent.ACTION_OPEN_DOCUMENT).apply { type = "image/png"; addCategory(Intent.CATEGORY_OPENABLE) },
+                REQ_SKIN
+            )
+        })
+        val skinGroup = RadioGroup(this)
+        val cur = prefs.getString("skin", null)
+        skins.list().forEach { f ->
+            skinGroup.addView(RadioButton(this).apply {
+                text = f.name
+                setTextColor(Color.WHITE)
+                id = View.generateViewId()
+                isChecked = f.name == cur
+                setOnClickListener { prefs.edit().putString("skin", f.name).apply() }
+            })
+        }
+        col.addView(skinGroup)
+        col.addView(button("Apply skin to selected version") {
+            val mc = prefs.getString("version", Versions.SUPPORTED.first())!!
+            val skin = selectedSkin()
+            if (skin == null) { msg.text = "Select a skin first" } else {
+                try {
+                    skins.applyToInstance(skin, paths.instanceDir(mc, prefs.getBoolean("client", true)), mc)
+                    msg.text = "Skin pack written for $mc"
+                } catch (e: Exception) { msg.text = "Failed: ${e.message}" }
+            }
+        })
+        return col
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQ_SKIN && resultCode == RESULT_OK && data?.data != null) {
+            try {
+                val f = skins.import(data.data!!)
+                prefs.edit().putString("skin", f.name).apply()
+                say("Imported ${f.name}")
+            } catch (e: Exception) {
+                say("Skin import failed: ${e.message}")
+            }
+            show(1)
+        }
+    }
+
+    // ---------- Performance ----------
+    private fun performancePage(): View {
+        val col = column()
+        col.addView(label("Performance (Max FPS)", 20f, green))
+        val mc = prefs.getString("version", Versions.SUPPORTED.first())!!
+        col.addView(label("Device: ${NativeBridge.deviceInfoJson()}", 12f, Color.LTGRAY))
+        col.addView(label("Version $mc - heap ${PerformancePresetManager.heapMb(mc)} MB"))
+        col.addView(label("JVM: " + PerformancePresetManager.jvmArgs(mc).joinToString(" "), 12f, Color.LTGRAY))
+        col.addView(label("Preset: " + PerformancePresetManager.options(mc).entries.joinToString(", ") { "${it.key}=${it.value}" }, 12f, Color.LTGRAY))
+        val out = label("", 12f, green)
+        col.addView(button("Apply preset to selected version") {
+            val dir = paths.instanceDir(mc, prefs.getBoolean("client", true))
+            PerformancePresetManager.apply(dir, mc)
+            out.text = "options.txt updated in ${dir.name}"
+        })
+        col.addView(out)
+        return col
+    }
+
+    // ---------- Logs ----------
+    private fun logsPage(): View {
+        val col = column()
+        col.addView(label("Logs", 20f, green))
+        val tv = label("", 11f, Color.LTGRAY)
+        fun refresh() { tv.text = (AppLog.snapshot() + NativeBridge.drainLogs()).takeLast(200).joinToString("\n") }
+        col.addView(button("Refresh") { refresh() })
+        col.addView(tv)
+        refresh()
+        return col
+    }
+
+    companion object {
+        private const val REQ_SKIN = 1001
+    }
+}
