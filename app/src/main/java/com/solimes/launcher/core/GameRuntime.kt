@@ -19,3 +19,18 @@ class GameRuntime(private val context: Context) {
         return if (binJava.exists()) binJava else prepareJava8()
     }
 }
+
+object RuntimeProvider {
+    @Volatile
+    var current: RuntimeRunner = DefaultRuntimeRunner()
+
+    interface RuntimeRunner {
+        fun launch(spec: Any): Result<Unit>
+    }
+
+    class DefaultRuntimeRunner : RuntimeRunner {
+        override fun launch(spec: Any): Result<Unit> {
+            return Result.success(Unit)
+        }
+    }
+}
