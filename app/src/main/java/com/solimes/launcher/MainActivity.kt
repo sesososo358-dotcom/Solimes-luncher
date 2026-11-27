@@ -24,6 +24,7 @@ import com.solimes.launcher.core.InstallRequest
 import com.solimes.launcher.core.InstanceInstaller
 import com.solimes.launcher.core.InstanceMeta
 import com.solimes.launcher.core.LaunchBuilder
+import com.solimes.launcher.core.LocalJavaRuntime
 import com.solimes.launcher.core.RuntimeProvider
 import com.solimes.launcher.core.Versions
 import com.solimes.launcher.nativebridge.NativeBridge
@@ -52,6 +53,7 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         NativeBridge.ensureLoaded()
         paths = GamePaths(this)
+        RuntimeProvider.current = LocalJavaRuntime(paths) { msg -> say(msg) }
         prefs = getSharedPreferences("solimes", MODE_PRIVATE)
         accounts = AccountManager(paths)
         skins = SkinManager(this, paths)
