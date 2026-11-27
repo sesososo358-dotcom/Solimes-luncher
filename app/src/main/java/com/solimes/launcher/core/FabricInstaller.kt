@@ -38,7 +38,7 @@ class FabricInstaller(private val paths: GamePaths, private val say: (String) ->
 
         val tasks = fabricLibraryTasks(profile)
         say("Downloading Fabric loader $loader (${tasks.size} libraries)...")
-        Net.downloadAll(tasks, 4) { d, t -> say("Fabric: $d / $t") }
+        Net.downloadAll(tasks, 3) { d, t -> say("Fabric: $d / $t") }
         return file
     }
 
@@ -47,9 +47,14 @@ class FabricInstaller(private val paths: GamePaths, private val say: (String) ->
         val out = ArrayList<DlTask>()
         for (i in 0 until libs.length()) {
             val lib = libs.getJSONObject(i)
-            val path = Libraries.mavenPath(lib.getString("name"))
+            val name = lib.getString("name")
+            val path = Libraries.mavenPath(name)
             val base = lib.optString("url", "https://maven.fabricmc.net/").trimEnd('/')
-            out += DlTask("$base/$path", File(paths.libraries, path), lib.optString("sha1").ifEmpty { null })
+            val url = "$base/$path"
+            val dest = File(paths.libraries, path)
+            val sha1 = lib.optString("sha1").ifEmpty { null }
+            val optional404 = name.contains("lwjgl-platform") || url.contains("lwjgl-platform")
+            out += DlTask(url, dest, sha1, optional404)
         }
         return out
     }
