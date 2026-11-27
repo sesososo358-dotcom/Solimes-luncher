@@ -2,12 +2,6 @@ package com.solimes.launcher.core
 
 import java.io.File
 
-/**
- * The piece that actually starts the JVM on Android.
- *
- * Looks for an arm64 Java runtime inside GamePaths.runtime (e.g. runtime/java8/bin/java),
- * prepares native/GL library paths, and launches the JVM process.
- */
 interface GameRuntime {
     val name: String
     fun isAvailable(): Boolean
@@ -21,18 +15,46 @@ class LocalJavaRuntime(
 
     override val name: String = "Local Android Java Runtime"
 
-    private fun findJavaBin(): File? {
-        val candidates = listOf(
-            File(paths.runtime, "java8/bin/java"),
-            File(paths.runtime, "jre8/bin/java"),
-            File(paths.runtime, "bin/java")
-        )
-        candidates.firstOrNull { it.exists() }?.let { return it }
+    private fun candidateDirsFor(javaMajor: Int): List<File> {
+        val exact = when (javaMajor) {
+            8 -> listOf(
+                File(paths.runtime, "java8"),
+                File(paths.runtime, "jre8"),
+                File(paths.runtime, "jre8-arm64")
+            )
+            17 -> listOf(
+                File(paths.runtime, "java17"),
+                File(paths.runtime, "jre17"),
+                File(paths.runtime, "jre17-arm64")
+            )
+            21 -> listOf(
+                File(paths.runtime, "java21"),
+                File(paths.runtime, "jre21"),
+                File(paths.runtime, "jre21-arm64")
+            )
+            else -> listOf(
+                File(paths.runtime, "java$javaMajor"),
+                File(paths.runtime, "jre$javaMajor")
+            )
+        }
+        val fallbackSubs = paths.runtime.listFiles()
+            ?.filter { it.isDirectory }
+            ?.sortedBy { it.name }
+            ?: emptyList()
 
-        val subs = paths.runtime.listFiles()?.filter { it.isDirectory } ?: emptyList()
-        for (dir in subs) {
-            val bin = File(dir, "bin/java")
-            if (bin.exists()) return bin
+        return (exact + fallbackSubs + paths.runtime).distinctBy { it.absolutePath }
+    }
+
+    private fun findJavaBin(javaMajor: Int): File? {
+        for (dir in candidateDirsFor(javaMajor)) {
+            val direct = File(dir, "bin/java")
+            if (direct.exists()) return direct
+
+            val nested = dir.listFiles()?.filter { it.isDirectory } ?: emptyList()
+            for (sub in nested) {
+                val bin = File(sub, "bin/java")
+                if (bin.exists()) return bin
+            }
         }
         return null
     }
@@ -57,15 +79,16 @@ class LocalJavaRuntime(
         return dirs.toList()
     }
 
-    override fun isAvailable(): Boolean = findJavaBin() != null
+    override fun isAvailable(): Boolean = findJavaBin(8) != null
 
     override fun launch(spec: LaunchSpec): Result<Unit> {
-        val javaBin = findJavaBin()
+        val javaBin = findJavaBin(spec.javaMajor)
         if (javaBin == null) {
+            val expectedDir = File(paths.runtime, "java${spec.javaMajor}").absolutePath
             return Result.failure(
                 IllegalStateException(
                     "Java ${spec.javaMajor} (arm64) not found in ${paths.runtime.absolutePath}. " +
-                    "Place your extracted Java ${spec.javaMajor} runtime inside ${File(paths.runtime, "java8").absolutePath} " +
+                    "Place your extracted Java ${spec.javaMajor} runtime inside $expectedDir " +
                     "(containing bin/java). Launch command saved to ${spec.workDir.path}/launch-command.txt"
                 )
             )
@@ -90,11 +113,10 @@ class LocalJavaRuntime(
                 env["JAVA_HOME"] = javaHome.absolutePath
             }
             if (soDirs.isNotEmpty()) {
-                val joined = soDirs.joinToString(":")
-                env["LD_LIBRARY_PATH"] = joined
+                env["LD_LIBRARY_PATH"] = soDirs.joinToString(":")
             }
 
-            onLog("Starting ${spec.mainClass} with ${javaBin.absolutePath}...")
+            onLog("Starting ${spec.mainClass} (Java ${spec.javaMajor}) with ${javaBin.absolutePath}...")
             val proc = pb.start()
             Thread {
                 proc.inputStream.bufferedReader().useLines { lines ->
