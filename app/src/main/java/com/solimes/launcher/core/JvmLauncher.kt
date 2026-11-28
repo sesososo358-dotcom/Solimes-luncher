@@ -56,44 +56,9 @@ object JvmLauncher {
     ): Int {
         check(!started) { "JVM تعمل بالفعل في هذه العملية؛ أعد تشغيل التطبيق" }
         val libJli = requireNotNull(JavaLayout.libjli(javaHome)) { "libjli.so غير موجود" }
-        val libJvm = requireNotNull(JavaLayout.libjvm(javaHome)) { "libjvm.so غير موجود" }
+        requireNotNull(JavaLayout.libjvm(javaHome)) { "libjvm.so غير موجود" }
 
         val arch = JavaLayout.archDir(javaHome)
         // الترتيب مهم: libjvm أولاً لأن libjava تعتمد عليها
         val preload = buildList {
-            add(libJvm.absolutePath)
-            listOf("libverify.so", "libjava.so", "libzip.so", "libnet.so", "libnio.so")
-                .map { File(arch, it) }
-                .filter { it.isFile }
-                .forEach { add(it.absolutePath) }
-        }.toTypedArray()
-
-        val ldPath = (JavaLayout.libraryDirs(javaHome) + nativeDirs).joinToString(":")
-        val env = buildList {
-            add("JAVA_HOME=${javaHome.absolutePath}")
-            add("LD_LIBRARY_PATH=$ldPath")
-            add("HOME=${workDir.absolutePath}")
-            add("LIBGL_ES=2")   // gl4es: استهداف GLES 2.0، عدّله حسب الحاجة
-            extraEnv.forEach { (k, v) -> add("$k=$v") }
-        }.toTypedArray()
-
-        val flags = jvmArgs.toMutableList()
-        if (flags.none { it.startsWith("-Xmx") }) flags.add("-Xmx1024M")
-        if (flags.none { it.contains("UseSerialGC") || it.contains("UseG1GC") }) flags.add("-XX:+UseSerialGC")
-        flags.add("-Djava.awt.headless=true")
-
-        val argv = buildList {
-            add(File(javaHome, "bin/java").absolutePath) // JLI يستنتج مسار JRE من libjli نفسها
-            addAll(flags)
-            add("-cp"); add(classpath.joinToString(":"))
-            add(mainClass)
-            addAll(gameArgs)
-        }.toTypedArray()
-
-        started = true
-        logFile.parentFile?.mkdirs()
-        AppLog.i(TAG, "تشغيل JVM: flags=${flags.size}, classpath=${classpath.size}, main=$mainClass")
-        AppLog.i(TAG, "سجل اللعبة: ${logFile.absolutePath}")
-        return nativeRun(workDir.absolutePath, logFile.absolutePath, libJli.absolutePath, preload, env, argv)
-    }
-}
+            val jvmLib = requireNotNull(JavaLayout.libjvm(javaHome)) { "libjvm.so غير موجود"
