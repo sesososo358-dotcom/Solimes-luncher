@@ -4,7 +4,6 @@ import android.os.Bundle
 import android.view.MotionEvent
 import android.view.SurfaceHolder
 import android.view.SurfaceView
-import android.view.View
 import android.view.WindowManager
 import androidx.appcompat.app.AppCompatActivity
 import com.solimes.launcher.core.AppLog
