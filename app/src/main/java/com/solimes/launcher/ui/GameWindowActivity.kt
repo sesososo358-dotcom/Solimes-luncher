@@ -3,23 +3,14 @@ package com.solimes.launcher.ui
 import android.app.Activity
 import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
-import android.os.Process
-import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.SurfaceHolder
 import android.view.SurfaceView
-import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
-import android.widget.Toast
 import com.solimes.launcher.core.AppLog
-import com.solimes.launcher.core.JvmLauncher
 import com.solimes.launcher.core.LwjglBridge
-import com.solimes.launcher.core.RealGameRuntime
-import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 
 class GameWindowActivity : Activity(), SurfaceHolder.Callback {
@@ -37,12 +28,30 @@ class GameWindowActivity : Activity(), SurfaceHolder.Callback {
         view.holder.addCallback(this)
         view.isFocusable = true
         view.isFocusableInTouchMode = true
-        view.setOnTouchListener { _, e ->
-            handleTouch(e)
+        view.setOnTouchListener { _, event ->
+            handleTouch(event)
             true
         }
         setContentView(view)
         hideSystemUi()
+    }
+
+    private fun handleTouch(event: MotionEvent) {
+        val action = when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> 1
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP, MotionEvent.ACTION_CANCEL -> 0
+            MotionEvent.ACTION_MOVE -> 2
+            else -> return
+        }
+        val idx = event.actionIndex.takeIf { it < event.pointerCount } ?: 0
+        runCatching {
+            LwjglBridge.nativeCursorPos(event.getX(idx).toDouble(), event.getY(idx).toDouble())
+            if (action == 0 || action == 1) {
+                LwjglBridge.nativeMouseButton(0, action, 0)
+            }
+        }.onFailure {
+            AppLog.w(TAG, "تعذر تمرير اللمس إلى LwjglBridge: ${it.message}")
+        }
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -52,9 +61,39 @@ class GameWindowActivity : Activity(), SurfaceHolder.Callback {
 
     @Suppress("DEPRECATION")
     private fun hideSystemUi() {
-        if (Build.VERSION.SDK_INT >= 30) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             window.insetsController?.let {
                 it.hide(WindowInsets.Type.systemBars())
                 it.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             }
+        } else {
+            @Suppress("DEPRECATION")
+            window.decorView.systemUiVisibility =
+                android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+                    android.view.View.SYSTEM_UI_FLAG_FULLSCREEN or
+                    android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
         }
+    }
+
+    override fun surfaceCreated(holder: SurfaceHolder) {
+        if (started.compareAndSet(false, true)) {
+            runCatching {
+                LwjglBridge.nativeSetSurface(holder.surface)
+            }.onFailure {
+                AppLog.w(TAG, "تعذر ربط Surface بـ LwjglBridge: ${it.message}")
+            }
+        }
+    }
+
+    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+        runCatching {
+            LwjglBridge.nativeSetSurface(holder.surface)
+        }
+    }
+
+    override fun surfaceDestroyed(holder: SurfaceHolder) {
+        runCatching {
+            LwjglBridge.nativeSetSurface(null)
+        }
+    }
+}
