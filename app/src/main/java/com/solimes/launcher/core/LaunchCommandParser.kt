@@ -2,7 +2,6 @@ package com.solimes.launcher.core
 
 import java.io.File
 
-/** يحوّل launch-command.txt إلى jvmArgs / classpath / mainClass / gameArgs. */
 object LaunchCommandParser {
 
     data class Parsed(
@@ -79,3 +78,28 @@ object LaunchCommandParser {
             if (quote != null) {
                 when {
                     c == quote -> quote = null
+                    c == '\\' && quote == '"' && i + 1 < s.length && (s[i + 1] == '"' || s[i + 1] == '\\') -> {
+                        cur.append(s[i + 1])
+                        i++
+                    }
+                    else -> cur.append(c)
+                }
+            } else if (c == '"' || c == '\'') {
+                quote = c
+                hasToken = true
+            } else if (c.isWhitespace()) {
+                if (hasToken || cur.isNotEmpty()) {
+                    out.add(cur.toString())
+                    cur.setLength(0)
+                    hasToken = false
+                }
+            } else {
+                cur.append(c)
+            }
+            i++
+        }
+        require(quote == null) { "علامة اقتباس غير مغلقة" }
+        if (hasToken || cur.isNotEmpty()) out.add(cur.toString())
+        return out
+    }
+}
