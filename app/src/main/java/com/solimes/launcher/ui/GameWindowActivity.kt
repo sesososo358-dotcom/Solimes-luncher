@@ -1,15 +1,15 @@
 package com.solimes.launcher.ui
 
+import android.app.Activity
 import android.os.Bundle
 import android.view.MotionEvent
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.WindowManager
-import androidx.appcompat.app.AppCompatActivity
 import com.solimes.launcher.core.AppLog
 import com.solimes.launcher.core.LwjglBridge
 
-class GameWindowActivity : AppCompatActivity(), SurfaceHolder.Callback {
+class GameWindowActivity : Activity(), SurfaceHolder.Callback {
 
     private lateinit var surfaceView: SurfaceView
 
