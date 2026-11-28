@@ -40,9 +40,9 @@ class GameWindowActivity : Activity(), SurfaceHolder.Callback {
     @Suppress("DEPRECATION")
     private fun hideSystemUi() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            window.insetsController?.let {
-                it.hide(WindowInsets.Type.systemBars())
-                it.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            window.insetsController?.let { controller ->
+                controller.hide(WindowInsets.Type.systemBars())
+                controller.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             }
         } else {
             @Suppress("DEPRECATION")
@@ -57,8 +57,8 @@ class GameWindowActivity : Activity(), SurfaceHolder.Callback {
         if (started.compareAndSet(false, true)) {
             runCatching {
                 LwjglBridge.nativeSetSurface(holder.surface)
-            }.onFailure {
-                AppLog.w(TAG, "تعذر ربط Surface بـ LwjglBridge: ${it.message}")
+            }.onFailure { err ->
+                AppLog.w(TAG, "تعذر ربط Surface: ${err.message}")
             }
         }
     }
@@ -70,6 +70,6 @@ class GameWindowActivity : Activity(), SurfaceHolder.Callback {
     }
 
     override fun surfaceDestroyed(holder: SurfaceHolder) {
-        AppLog.i(TAG, "تم إتلاف Surface الخاصة بنافذة اللعبة")
+        AppLog.i(TAG, "تم إتلاف Surface")
     }
 }
