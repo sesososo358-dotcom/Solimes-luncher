@@ -10,9 +10,9 @@ class RuntimeInstaller(private val context: Context) {
 
     companion object {
         private const val TAG = "RuntimeInstaller"
-        const val ASSET_JRE = "runtime/jre8-arm64.zip"       // محتواه: bin/ lib/ ... في الجذر
-        const val ASSET_NATIVES = "runtime/natives-arm64.zip" // libgl4es.so, liblwjgl.so, ...
-        const val ASSET_SHIMS = "runtime/shims.zip"           // jars الـ LWJGL2/GLFW المعدّلة
+        const val ASSET_JRE = "runtime/jre8-arm64.zip"
+        const val ASSET_NATIVES = "runtime/natives-arm64.zip"
+        const val ASSET_SHIMS = "runtime/shims.zip"
     }
 
     private val root get() = File(context.filesDir, "runtime")
