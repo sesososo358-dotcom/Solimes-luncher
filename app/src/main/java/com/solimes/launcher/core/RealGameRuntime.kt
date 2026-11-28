@@ -44,6 +44,16 @@ class RealGameRuntime(private val context: Context) : GameRuntime {
             .map { File(it, fileName) }
             .firstOrNull { it.isFile && it.length() > 0L }
 
+    private fun toStringList(value: Any?): List<String> = when (value) {
+        null -> emptyList()
+        is Collection<*> -> value.mapNotNull { it?.toString() }.filter { it.isNotBlank() }
+        is Array<*> -> value.mapNotNull { it?.toString() }.filter { it.isNotBlank() }
+        else -> value.toString()
+            .split(File.pathSeparatorChar, ';', '\n')
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+    }
+
     private fun checkJavaAndNatives(major: Int): String? {
         if (Build.SUPPORTED_ABIS.none { it == ABI }) {
             return "Unsupported ABI: device does not support $ABI"
@@ -92,10 +102,11 @@ class RealGameRuntime(private val context: Context) : GameRuntime {
         }
 
         val home = javaHome(spec.javaMajor)
-        val gameDir = spec.workDir.apply { mkdirs() }
+        val gameDir = File(spec.workDir.toString()).apply { mkdirs() }
         check(gameDir.isDirectory) { "Failed to create game directory: ${gameDir.absolutePath}" }
 
-        val missingCp = spec.classpath.filterNot { File(it).isFile }
+        val classpathEntries = toStringList(spec.classpath)
+        val missingCp = classpathEntries.filterNot { File(it).isFile }
         require(missingCp.isEmpty()) {
             "Missing classpath entries (${missingCp.size}): ${missingCp.first()}"
         }
@@ -106,11 +117,12 @@ class RealGameRuntime(private val context: Context) : GameRuntime {
 
         val nativePathValue = nativeDirs.joinToString(File.pathSeparator)
         val jvmArgs = buildList {
-            addAll(spec.jvmArgs)
+            addAll(toStringList(spec.jvmArgs))
             add("-Djava.home=${home.absolutePath}")
             add("-Djava.library.path=$nativePathValue")
             add("-Dorg.lwjgl.librarypath=$nativePathValue")
         }
+        val gameArgs = toStringList(spec.gameArgs)
 
         val intent = Intent(context, GameWindowActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -118,9 +130,9 @@ class RealGameRuntime(private val context: Context) : GameRuntime {
             putExtra(EXTRA_JAVA_MAJOR, spec.javaMajor)
             putExtra(EXTRA_JAVA_HOME, home.absolutePath)
             putExtra(EXTRA_MAIN_CLASS, spec.mainClass)
-            putExtra(EXTRA_CLASSPATH, spec.classpath.toTypedArray())
+            putExtra(EXTRA_CLASSPATH, classpathEntries.toTypedArray())
             putExtra(EXTRA_JVM_ARGS, jvmArgs.toTypedArray())
-            putExtra(EXTRA_GAME_ARGS, spec.gameArgs.toTypedArray())
+            putExtra(EXTRA_GAME_ARGS, gameArgs.toTypedArray())
             putExtra(EXTRA_GAME_DIR, gameDir.absolutePath)
             putExtra(EXTRA_NATIVE_DIRS, nativeDirs.toTypedArray())
         }
