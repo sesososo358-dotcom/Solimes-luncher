@@ -5,7 +5,6 @@ import java.io.File
 import java.io.FileNotFoundException
 import java.util.zip.ZipInputStream
 
-/** يفك assets الـ Runtime إلى filesDir/runtime مرة واحدة لكل إصدار تطبيق. */
 class RuntimeInstaller(private val context: Context) {
 
     companion object {
@@ -25,7 +24,7 @@ class RuntimeInstaller(private val context: Context) {
         installZip(ASSET_JRE, javaHome8(), stamp, makeExecutables = true)
         installZip(ASSET_NATIVES, nativesDir(), stamp, makeExecutables = false)
         installZip(ASSET_SHIMS, shimsDir(), stamp, makeExecutables = false)
-    }.onFailure { AppLog.e(TAG, "فشل تجهيز الـ Runtime: ${it.message}", it) }
+    }.onFailure { err -> AppLog.e(TAG, "فشل تجهيز الـ Runtime: ${err.message}", err) }
 
     @Suppress("DEPRECATION")
     private fun installStamp(): String =
@@ -69,9 +68,9 @@ class RuntimeInstaller(private val context: Context) {
                     }
                 }
             }
-        } catch (e: FileNotFoundException) {
+        } catch (ex: FileNotFoundException) {
             tmp.deleteRecursively()
-            throw IllegalStateException("الملف $asset غير موجود داخل الـ APK (راجع خطوة fetch_runtime في CI)", e)
+            throw IllegalStateException("الملف $asset غير موجود داخل الـ APK", ex)
         }
         File(tmp, ".installed").writeText(stamp)
         dest.deleteRecursively()
