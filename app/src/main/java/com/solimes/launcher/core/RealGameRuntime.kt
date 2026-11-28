@@ -33,12 +33,6 @@ class RealGameRuntime(private val context: Context) : GameRuntime {
     private fun appNativeDir() = File(context.applicationInfo.nativeLibraryDir)
     private fun extraNativeDir() = File(context.filesDir, "runtime/natives/$ABI")
 
-    private fun jvmLibCandidates(home: File) = listOf(
-        File(home, "lib/server/libjvm.so"),
-        File(home, "lib/client/libjvm.so"),
-        File(home, "lib/libjvm.so")
-    )
-
     private fun findNative(fileName: String): File? =
         listOf(appNativeDir(), extraNativeDir())
             .map { File(it, fileName) }
@@ -54,23 +48,23 @@ class RealGameRuntime(private val context: Context) : GameRuntime {
             .filter { it.isNotBlank() }
     }
 
-    private fun checkJavaAndNatives(major: Int): String? {
+    private fun check(major: Int): String? {
         if (Build.SUPPORTED_ABIS.none { it == ABI }) {
             return "Unsupported ABI: device does not support $ABI"
         }
 
         val home = javaHome(major)
         if (!home.isDirectory) {
-            return "Missing Java $major runtime directory: ${home.absolutePath}"
+            return "بيئة Java $major غير موجودة: ${home.absolutePath}"
         }
-
-        val hasCoreRuntime = File(home, "lib/modules").isFile || File(home, "lib/rt.jar").isFile
-        if (!hasCoreRuntime) {
-            return "Missing Java $major core archive (lib/modules or lib/rt.jar)"
+        if (!File(home, "lib/rt.jar").isFile) {
+            return "lib/rt.jar غير موجود (Java 8)"
         }
-
-        if (jvmLibCandidates(home).none { it.isFile && it.length() > 0L }) {
-            return "Missing libjvm.so inside ${home.absolutePath}/lib"
+        if (JavaLayout.libjli(home) == null) {
+            return "libjli.so غير موجود تحت lib/aarch64"
+        }
+        if (JavaLayout.libjvm(home) == null) {
+            return "libjvm.so غير موجود تحت lib/aarch64/server"
         }
 
         val missingLibs = REQUIRED_NATIVES.filter { findNative(it) == null }
@@ -82,7 +76,7 @@ class RealGameRuntime(private val context: Context) : GameRuntime {
     }
 
     override fun isAvailable(): Boolean {
-        val reason = checkJavaAndNatives(8) ?: checkJavaAndNatives(17)
+        val reason = check(8)
         lastUnavailableReason = reason
         if (reason != null) {
             AppLog.add(1, "Runtime unavailable: $reason")
@@ -92,9 +86,11 @@ class RealGameRuntime(private val context: Context) : GameRuntime {
     }
 
     override fun launch(spec: LaunchSpec): Result<Unit> = runCatching {
+        RuntimeInstaller(context).ensureInstalled().getOrThrow()
+
         AppLog.add(0, "Preparing launch: java=${spec.javaMajor}, mainClass=${spec.mainClass}")
 
-        val reason = checkJavaAndNatives(spec.javaMajor)
+        val reason = check(spec.javaMajor)
         lastUnavailableReason = reason
         if (reason != null) {
             AppLog.add(2, "Runtime check failed: $reason")
