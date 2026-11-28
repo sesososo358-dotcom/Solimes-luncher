@@ -2,7 +2,6 @@ package com.solimes.launcher.core
 
 import java.io.File
 
-/** تخطيط OpenJDK 8 على arm64 (نبحث في أكثر من موضع لأن حزم JRE تختلف). */
 object JavaLayout {
     private fun first(vararg f: File) = f.firstOrNull { it.isFile && it.length() > 0 }
 
@@ -28,7 +27,6 @@ object JavaLayout {
     ).filter { it.isDirectory }.map { it.absolutePath }
 }
 
-/** يشغّل JVM داخل العملية الحالية عبر JLI_Launch. لا يمكن تشغيله إلا مرة واحدة لكل عملية. */
 object JvmLauncher {
     private const val TAG = "JvmLauncher"
     private var started = false
@@ -41,7 +39,6 @@ object JvmLauncher {
         preload: Array<String>, env: Array<String>, argv: Array<String>
     ): Int
 
-    /** يحجب الخيط حتى تنتهي اللعبة، فشغّله من خيط خلفي فقط. يرجع رمز الخروج. */
     @Synchronized
     fun run(
         javaHome: File,
@@ -54,11 +51,52 @@ object JvmLauncher {
         nativeDirs: List<String>,
         extraEnv: Map<String, String> = emptyMap()
     ): Int {
-        check(!started) { "JVM تعمل بالفعل في هذه العملية؛ أعد تشغيل التطبيق" }
+        check(!started) { "JVM تعمل بالفعل في هذه العملية" }
         val libJli = requireNotNull(JavaLayout.libjli(javaHome)) { "libjli.so غير موجود" }
-        requireNotNull(JavaLayout.libjvm(javaHome)) { "libjvm.so غير موجود" }
+        val libJvm = requireNotNull(JavaLayout.libjvm(javaHome)) { "libjvm.so غير موجود" }
 
         val arch = JavaLayout.archDir(javaHome)
-        // الترتيب مهم: libjvm أولاً لأن libjava تعتمد عليها
-        val preload = buildList {
-            val jvmLib = requireNotNull(JavaLayout.libjvm(javaHome)) { "libjvm.so غير موجود"
+        val preloadList = ArrayList<String>().apply {
+            add(libJvm.absolutePath)
+            listOf("libverify.so", "libjava.so", "libzip.so", "libnet.so", "libnio.so")
+                .map { File(arch, it) }
+                .filter { it.isFile }
+                .forEach { add(it.absolutePath) }
+        }
+
+        val ldPath = (JavaLayout.libraryDirs(javaHome) + nativeDirs).joinToString(":")
+        val envList = ArrayList<String>().apply {
+            add("JAVA_HOME=${javaHome.absolutePath}")
+            add("LD_LIBRARY_PATH=$ldPath")
+            add("HOME=${workDir.absolutePath}")
+            add("LIBGL_ES=2")
+            extraEnv.forEach { (k, v) -> add("$k=$v") }
+        }
+
+        val flags = jvmArgs.toMutableList()
+        if (flags.none { it.startsWith("-Xmx") }) flags.add("-Xmx1024M")
+        if (flags.none { it.contains("UseSerialGC") || it.contains("UseG1GC") }) flags.add("-XX:+UseSerialGC")
+        flags.add("-Djava.awt.headless=true")
+
+        val argvList = ArrayList<String>().apply {
+            add(File(javaHome, "bin/java").absolutePath)
+            addAll(flags)
+            add("-cp")
+            add(classpath.joinToString(":"))
+            add(mainClass)
+            addAll(gameArgs)
+        }
+
+        started = true
+        logFile.parentFile?.mkdirs()
+        AppLog.i(TAG, "تشغيل JVM: flags=${flags.size}, classpath=${classpath.size}, main=$mainClass")
+        return nativeRun(
+            workDir.absolutePath,
+            logFile.absolutePath,
+            libJli.absolutePath,
+            preloadList.toTypedArray(),
+            envList.toTypedArray(),
+            argvList.toTypedArray()
+        )
+    }
+}
