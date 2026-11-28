@@ -29,7 +29,11 @@ object LaunchCommandParser {
         var i = 0
         while (i < tokens.size) {
             val t = tokens[i]
-            if (main != null) { game.add(t); i++; continue }
+            if (main != null) {
+                game.add(t)
+                i++
+                continue
+            }
             when {
                 t == "-cp" || t == "-classpath" || t == "--class-path" -> {
                     require(i + 1 < tokens.size) { "-cp بدون قيمة" }
@@ -37,8 +41,14 @@ object LaunchCommandParser {
                     i += 2
                 }
                 t == "-jar" -> error("-jar غير مدعوم، استخدم mainClass مع -cp")
-                t.startsWith("-") -> { jvm.add(t); i++ }
-                else -> { main = t; i++ }
+                t.startsWith("-") -> {
+                    jvm.add(t)
+                    i++
+                }
+                else -> {
+                    main = t
+                    i++
+                }
             }
         }
         val mainClass = requireNotNull(main) { "لم يتم العثور على mainClass" }
@@ -46,16 +56,15 @@ object LaunchCommandParser {
         Parsed(jvm, cp, mainClass, game)
     }
 
-    /** افتراض: LaunchSpec(javaMajor, mainClass, classpath, jvmArgs, gameArgs, gameDir). عدّله إن اختلف. */
     fun toSpec(file: File, javaMajor: Int, gameDir: File): Result<LaunchSpec> = runCatching {
         val p = parse(file.readText()).getOrThrow()
         LaunchSpec(
             javaMajor = javaMajor,
-            mainClass = p.mainClass,
-            classpath = p.classpath,
             jvmArgs = p.jvmArgs,
+            mainClass = p.mainClass,
             gameArgs = p.gameArgs,
-            gameDir = gameDir.absolutePath
+            classpath = p.classpath.map { File(it) },
+            workDir = gameDir
         )
     }
 
@@ -70,24 +79,3 @@ object LaunchCommandParser {
             if (quote != null) {
                 when {
                     c == quote -> quote = null
-                    c == '\\' && quote == '"' && i + 1 < s.length && (s[i + 1] == '"' || s[i + 1] == '\\') -> {
-                        cur.append(s[i + 1]); i++
-                    }
-                    else -> cur.append(c)
-                }
-            } else if (c == '"' || c == '\'') {
-                quote = c; hasToken = true
-            } else if (c.isWhitespace()) {
-                if (hasToken || cur.isNotEmpty()) {
-                    out.add(cur.toString()); cur.setLength(0); hasToken = false
-                }
-            } else {
-                cur.append(c)
-            }
-            i++
-        }
-        require(quote == null) { "علامة اقتباس غير مغلقة" }
-        if (hasToken || cur.isNotEmpty()) out.add(cur.toString())
-        return out
-    }
-}
