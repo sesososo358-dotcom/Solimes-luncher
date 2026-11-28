@@ -8,7 +8,7 @@ import java.io.File
 
 class RealGameRuntime(private val context: Context) : GameRuntime {
 
-    override val name: String = "Solimes Real Runtime (arm64-v8a)"
+    override val name: String = "Solimes Native Runtime (arm64-v8a)"
 
     companion object {
         private const val ABI = "arm64-v8a"
@@ -39,78 +39,77 @@ class RealGameRuntime(private val context: Context) : GameRuntime {
         File(home, "lib/libjvm.so")
     )
 
-    private fun findNative(name: String): File? =
+    private fun findNative(fileName: String): File? =
         listOf(appNativeDir(), extraNativeDir())
-            .map { File(it, name) }
-            .firstOrNull { it.isFile && it.length() > 0 }
+            .map { File(it, fileName) }
+            .firstOrNull { it.isFile && it.length() > 0L }
 
-    private fun checkForMajor(javaMajor: Int): String? {
+    private fun checkJavaAndNatives(major: Int): String? {
         if (Build.SUPPORTED_ABIS.none { it == ABI }) {
-            return "الجهاز لا يدعم المعمارية $ABI"
+            return "Unsupported ABI: device does not support $ABI"
         }
 
-        val home = javaHome(javaMajor)
+        val home = javaHome(major)
         if (!home.isDirectory) {
-            return "بيئة Java $javaMajor غير موجودة: ${home.absolutePath}"
+            return "Missing Java $major runtime directory: ${home.absolutePath}"
         }
 
-        val hasModules = File(home, "lib/modules").isFile
-        val hasRtJar = File(home, "lib/rt.jar").isFile
-        if (!hasModules && !hasRtJar) {
-            return "ملفات Java $javaMajor ناقصة (lib/modules أو rt.jar غير موجود)"
+        val hasCoreRuntime = File(home, "lib/modules").isFile || File(home, "lib/rt.jar").isFile
+        if (!hasCoreRuntime) {
+            return "Missing Java $major core archive (lib/modules or lib/rt.jar)"
         }
 
-        if (jvmLibCandidates(home).none { it.isFile && it.length() > 0 }) {
-            return "libjvm.so غير موجودة داخل ${home.absolutePath}/lib"
+        if (jvmLibCandidates(home).none { it.isFile && it.length() > 0L }) {
+            return "Missing libjvm.so inside ${home.absolutePath}/lib"
         }
 
-        val missing = REQUIRED_NATIVES.filter { findNative(it) == null }
-        if (missing.isNotEmpty()) {
-            return "مكتبات أصلية ناقصة ($ABI): ${missing.joinToString()}"
+        val missingLibs = REQUIRED_NATIVES.filter { findNative(it) == null }
+        if (missingLibs.isNotEmpty()) {
+            return "Missing native libraries ($ABI): ${missingLibs.joinToString()}"
         }
 
         return null
     }
 
     override fun isAvailable(): Boolean {
-        val reason = checkForMajor(8) ?: checkForMajor(17)
+        val reason = checkJavaAndNatives(8) ?: checkJavaAndNatives(17)
         lastUnavailableReason = reason
         if (reason != null) {
-            AppLog.add(1, "RealGameRuntime غير متاح: $reason")
+            AppLog.add(1, "Runtime unavailable: $reason")
             return false
         }
         return true
     }
 
     override fun launch(spec: LaunchSpec): Result<Unit> = runCatching {
-        AppLog.add(0, "RealGameRuntime: بدء التجهيز لـ javaMajor=${spec.javaMajor}, mainClass=${spec.mainClass}")
+        AppLog.add(0, "Preparing launch: java=${spec.javaMajor}, mainClass=${spec.mainClass}")
 
-        val reason = checkForMajor(spec.javaMajor)
+        val reason = checkJavaAndNatives(spec.javaMajor)
         lastUnavailableReason = reason
         if (reason != null) {
-            AppLog.add(2, "RealGameRuntime: فحص المتطلبات فشل: $reason")
+            AppLog.add(2, "Runtime check failed: $reason")
             error(reason)
         }
 
         val home = javaHome(spec.javaMajor)
         val gameDir = spec.workDir.apply { mkdirs() }
-        check(gameDir.isDirectory) { "تعذّر إنشاء مجلد اللعبة: ${gameDir.absolutePath}" }
+        check(gameDir.isDirectory) { "Failed to create game directory: ${gameDir.absolutePath}" }
 
         val missingCp = spec.classpath.filterNot { File(it).isFile }
         require(missingCp.isEmpty()) {
-            "ملفات classpath مفقودة (${missingCp.size}): ${missingCp.first()}"
+            "Missing classpath entries (${missingCp.size}): ${missingCp.first()}"
         }
 
         val nativeDirs = listOf(appNativeDir(), extraNativeDir())
             .filter { it.isDirectory }
             .map { it.absolutePath }
 
-        val nativePathJoined = nativeDirs.joinToString(File.pathSeparator)
+        val nativePathValue = nativeDirs.joinToString(File.pathSeparator)
         val jvmArgs = buildList {
             addAll(spec.jvmArgs)
             add("-Djava.home=${home.absolutePath}")
-            add("-Djava.library.path=$nativePathJoined")
-            add("-Dorg.lwjgl.librarypath=$nativePathJoined")
+            add("-Djava.library.path=$nativePathValue")
+            add("-Dorg.lwjgl.librarypath=$nativePathValue")
         }
 
         val intent = Intent(context, GameWindowActivity::class.java).apply {
@@ -126,9 +125,9 @@ class RealGameRuntime(private val context: Context) : GameRuntime {
             putExtra(EXTRA_NATIVE_DIRS, nativeDirs.toTypedArray())
         }
 
-        AppLog.add(0, "RealGameRuntime: فتح GameWindowActivity")
+        AppLog.add(0, "Starting GameWindowActivity")
         context.startActivity(intent)
-    }.onFailure { e ->
-        AppLog.add(2, "RealGameRuntime: فشل التشغيل: ${e.message}")
+    }.onFailure { err ->
+        AppLog.add(2, "Launch failed: ${err.message}")
     }
 }
